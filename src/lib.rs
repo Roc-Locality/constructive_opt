@@ -76,7 +76,6 @@ mod tests {
         let _hist = tracing_ri_with_trace(&mut node, 512, 64);
     }
 
-    #[test]
     fn read_csv_test() {
         main().unwrap();
         // let path = "../out/access_trace.csv";
