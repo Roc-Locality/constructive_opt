@@ -1,0 +1,10 @@
+[package]
+name = "constructive_opt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dace_tests = { git = "https://github.com/Dace-Locality/dace_tests" }
+ri = { git = "https://github.com/Dace-Locality/ri" }
+serde = { version = "1.0.204", features = ["derive"] }
+csv = "1.3.0"
