@@ -1,88 +1,74 @@
-#![allow(dead_code)]
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::error::Error;
-use std::fs::File;
-use std::path::Path;
+use std::hash::Hash;
 
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct AccessTrace {
-    pub ref_id: u64,
-    backward_ri: u64,
-    forward_ri: Option<u64>,
-    address: u64,
-    counter: u64,
-}
-
-fn read_csv<P: AsRef<Path>>(path: P) -> Result<Vec<AccessTrace>, Box<dyn Error>> {
-    let file = File::open(path)?;
-    let mut rdr = csv::Reader::from_reader(file);
-    let mut records = Vec::new();
-
-    for result in rdr.deserialize() {
-        let mut record: AccessTrace = result?;
-        record.forward_ri = None;
-        records.push(record);
-    }
-
-    Ok(records)
-}
-
-fn calculate_forward_ri(records: &mut [AccessTrace]) {
-    let mut last_seen: HashMap<u64, usize> = HashMap::new();
-
-    for i in 0..records.len() {
-        let address = records[i].address;
-        if let Some(&next_index) = last_seen.get(&address) {
-            let forward_ri = (i - next_index) as u64;
-            records[next_index].forward_ri = Some(forward_ri);
+pub fn forward_distance<T: PartialEq + Eq + Clone + Hash>(trace: &[T]) -> Vec<usize> {
+    let mut last_occurence = HashMap::new();
+    let mut result = vec![0; trace.len()];
+    for (i, element) in trace.iter().enumerate().rev() {
+        match last_occurence.entry(element) {
+            Entry::Occupied(mut x) => {
+                result[i] = x.get() - i;
+                *x.get_mut() = i;
+            }
+            Entry::Vacant(x) => {
+                result[i] = usize::MAX;
+                x.insert(i);
+            }
         }
-        last_seen.insert(address, i);
     }
+    result
 }
 
-// fn create_mock_csv<P: AsRef<Path>>(path: P) -> Result<(), Box<dyn Error>> {
-//     let mut file = OpenOptions::new().write(true).create(true).open(path)?;
-//     writeln!(file, "ref_id,froward_ri,address,counter")?;
-//     writeln!(file, "1,10,1000,1")?;
-//     writeln!(file, "2,20,2000,2")?;
-//     Ok(())
-// }
+pub fn opt_miss_ratio<T: PartialEq + Eq + Clone + Hash>(trace: &[T], cache_size: usize) -> f64 {
+    let mut cache_accesses: usize = 0;
+    let mut cache_misses: usize = 0;
+    let mut cache_registers: Vec<T> = Vec::with_capacity(cache_size);
+    let mut cache_distances: Vec<usize> = Vec::with_capacity(cache_size);
+    let forward_distances = forward_distance(trace);
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let path = "../out/access_trace.csv";
-    let mut records = read_csv(path)?;
+    for (time, element) in trace.iter().enumerate() {
+        // Access cache
+        cache_accesses += 1;
 
-    calculate_forward_ri(&mut records);
+        if !cache_registers.contains(element) {
+            cache_misses += 1;
+            if cache_registers.len() == cache_size {
+                // Evict
+                let evict_index = cache_distances
+                    .iter()
+                    .position(|x| x == cache_distances.iter().max().unwrap())
+                    .unwrap();
+                cache_registers[evict_index] = element.clone();
+                cache_distances[evict_index] = forward_distances[time];
+            } else {
+                cache_registers.push(element.clone());
+                cache_distances.push(forward_distances[time]);
+            }
+        }
 
-    for record in records {
-        println!("{:?}", record);
+        // Update cache
+        for dist in cache_distances.iter_mut() {
+            if *dist == 0 {
+                *dist = forward_distances[time];
+            }
+            *dist -= 1;
+        }
     }
 
-    Ok(())
+    cache_misses as f64 / cache_accesses as f64
 }
 
 #[cfg(test)]
 mod tests {
-    use dace_tests::polybench_simplify;
-    use ri::tracing_ri_with_trace;
-
     use super::*;
+    use rand::prelude::*;
 
-    #[test]
-    fn it_works() {
-        let mut node = polybench_simplify::mvt(512);
-        let _hist = tracing_ri_with_trace(&mut node, 512, 64);
-    }
-
-    fn read_csv_test() {
-        main().unwrap();
-        // let path = "../out/access_trace.csv";
-        // if !Path::new(path).exists() {
-        //     create_mock_csv(path).unwrap();
-        // }
-        // let records = read_csv(path).unwrap();
-        // println!("{:?}", records);
+    // #[test]
+    fn opt_miss_ratio_test() {
+        let mut rng = rand::thread_rng();
+        let trace: Vec<usize> = (0..1024).map(|_| rng.gen_range(0..256)).collect();
+        let result = opt_miss_ratio(&trace, 128);
+        assert_eq!(result, 0.3);
     }
 }
