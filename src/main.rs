@@ -1,12 +1,12 @@
 #![allow(dead_code)]
-use std::error::Error;
-use std::fs::File;
-use std::process::Command;
+use constructive_opt::opt_miss_ratio;
 use csv::ReaderBuilder;
 use indicatif::ProgressBar;
 use rand::Rng;
 use serde::Deserialize;
-use constructive_opt::opt_miss_ratio;
+use std::error::Error;
+use std::fs::File;
+use std::process::Command;
 
 #[derive(Debug, Deserialize)]
 struct RawAccessTrace {
@@ -34,12 +34,12 @@ fn generate_opt_miss_ratio_data(
 ) -> Result<(), Box<dyn Error>> {
     let mut wtr = csv::Writer::from_path(output_csv)?;
 
-    wtr.write_record(&["cache_size", "miss_ratio"])?;
+    wtr.write_record(["cache_size", "miss_ratio"])?;
 
     let bar = create_progress_bar(max_cache_size);
     for cache_size in 1..=max_cache_size {
         bar.inc(1);
-        let miss_ratio = opt_miss_ratio(&trace, cache_size);
+        let miss_ratio = opt_miss_ratio(trace, cache_size);
         wtr.write_record(&[cache_size.to_string(), miss_ratio.to_string()])?;
     }
     bar.finish();
@@ -118,7 +118,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // let _trace = vec![1, 2, 3, 4, 5, 1, 2, 3, 4, 1, 2, 3, 4];
 
     // draw_opt_miss_ratio_curve(&_trace, 256, "out/opt-miss-ratio-curve-plot.png")?;
-
 
     let max_cache_size = 256;
     let data_csv = "out/access_trace_miss.csv";
